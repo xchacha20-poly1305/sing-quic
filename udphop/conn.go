@@ -53,6 +53,7 @@ type udpPacket struct {
 
 func NewUDPHopPacketConn(addrStr string, hopPorts string,
 	hopInterval time.Duration,
+	preConn net.PacketConn,
 	listenPacket ListenPacketFunc,
 	logger logger.Logger) (net.PacketConn, error) {
 	addr, err := ResolveUDPHopAddr(addrStr, hopPorts)
@@ -68,16 +69,12 @@ func NewUDPHopPacketConn(addrStr string, hopPorts string,
 	if err != nil {
 		return nil, err
 	}
-	curConn, err := listenPacket()
-	if err != nil {
-		return nil, err
-	}
 	hConn := &udpHopPacketConn{
 		Addr:        addr,
 		Addrs:       addrs,
 		HopInterval: hopInterval,
 		prevConn:    nil,
-		currentConn: curConn,
+		currentConn: preConn,
 		addrIndex:   rand.Intn(len(addrs)),
 		recvQueue:   make(chan *udpPacket, packetQueueSize),
 		closeChan:   make(chan struct{}),
@@ -89,7 +86,7 @@ func NewUDPHopPacketConn(addrStr string, hopPorts string,
 		listenPacket: listenPacket,
 		logger:       logger,
 	}
-	go hConn.recvLoop(curConn)
+	go hConn.recvLoop(preConn)
 	go hConn.hopLoop()
 	return hConn, nil
 }

@@ -123,11 +123,13 @@ func (c *Client) offerNew(ctx context.Context) (*clientQUICConnection, error) {
 		return nil, err
 	}
 	var packetConn net.PacketConn
+	packetConn = bufio.NewUnbindPacketConn(udpConn)
 	if c.hopPorts != "" {
 		packetConn, err = hop.NewUDPHopPacketConn(
 			c.serverAddr.AddrString(),
 			c.hopPorts,
 			c.hopInterval,
+			packetConn,
 			func() (net.PacketConn, error) {
 				return c.dialer.ListenPacket(c.ctx, c.serverAddr)
 			},
@@ -136,8 +138,6 @@ func (c *Client) offerNew(ctx context.Context) (*clientQUICConnection, error) {
 		if err != nil {
 			return nil, E.Cause(err, "create hop PacketConn")
 		}
-	} else {
-		packetConn = bufio.NewUnbindPacketConn(udpConn)
 	}
 	if c.salamanderPassword != "" {
 		packetConn = NewSalamanderConn(packetConn, []byte(c.salamanderPassword), c.hopPorts != "")
