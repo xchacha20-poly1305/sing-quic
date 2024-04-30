@@ -1,10 +1,11 @@
 package udphop
 
 import (
-	"fmt"
 	"net"
 	"strconv"
 	"strings"
+
+	F "github.com/sagernet/sing/common/format"
 )
 
 type InvalidPortError struct {
@@ -12,7 +13,7 @@ type InvalidPortError struct {
 }
 
 func (e InvalidPortError) Error() string {
-	return fmt.Sprintf("%s is not a valid port number or range", e.PortStr)
+	return F.ToString(e.PortStr, " is not a valid port number or range")
 }
 
 // UDPHopAddr contains an IP address and a list of ports.
