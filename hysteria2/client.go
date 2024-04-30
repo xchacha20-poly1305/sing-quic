@@ -2,7 +2,6 @@ package hysteria2
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -129,7 +128,7 @@ func (c *Client) offerNew(ctx context.Context) (*clientQUICConnection, error) {
 			return c.dialer.ListenPacket(c.ctx, c.serverAddr)
 		})
 		if err != nil {
-			return nil, fmt.Errorf("hop.NewUDPHopPacketConn: %w", err)
+			return nil, E.Cause(err, "create hop PacketConn")
 		}
 	} else {
 		packetConn = bufio.NewUnbindPacketConn(udpConn)
