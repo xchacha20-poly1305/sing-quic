@@ -2,12 +2,13 @@ package udphop
 
 import (
 	"errors"
-	"fmt"
 	"math/rand"
 	"net"
 	"sync"
 	"syscall"
 	"time"
+
+	E "github.com/sagernet/sing/common/exceptions"
 )
 
 const (
@@ -51,12 +52,12 @@ type udpPacket struct {
 func NewUDPHopPacketConn(addrStr string, hopPorts string, hopInterval time.Duration, listenPacket ListenPacketFunc) (net.PacketConn, error) {
 	addr, err := ResolveUDPHopAddr(addrStr, hopPorts)
 	if err != nil {
-		return nil, fmt.Errorf("ResolveUDPHopAddr: %w", err)
+		return nil, E.Cause(err, "ResolveUDPHopAddr")
 	}
 	if hopInterval == 0 {
 		hopInterval = defaultHopInterval
 	} else if hopInterval < 5*time.Second {
-		return nil, errors.New("hop interval must be at least 5 seconds")
+		return nil, E.New("hop interval must be at least 5 seconds")
 	}
 	addrs, err := addr.addrs()
 	if err != nil {
