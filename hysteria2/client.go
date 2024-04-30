@@ -124,9 +124,15 @@ func (c *Client) offerNew(ctx context.Context) (*clientQUICConnection, error) {
 	}
 	var packetConn net.PacketConn
 	if c.hopPorts != "" {
-		packetConn, err = hop.NewUDPHopPacketConn(c.serverAddr.AddrString(), c.hopPorts, c.hopInterval, func() (net.PacketConn, error) {
-			return c.dialer.ListenPacket(c.ctx, c.serverAddr)
-		})
+		packetConn, err = hop.NewUDPHopPacketConn(
+			c.serverAddr.AddrString(),
+			c.hopPorts,
+			c.hopInterval,
+			func() (net.PacketConn, error) {
+				return c.dialer.ListenPacket(c.ctx, c.serverAddr)
+			},
+			c.logger,
+		)
 		if err != nil {
 			return nil, E.Cause(err, "create hop PacketConn")
 		}
