@@ -9,6 +9,7 @@ import (
 	"time"
 
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/logger"
 )
 
 const (
@@ -40,6 +41,7 @@ type udpHopPacketConn struct {
 	bufPool sync.Pool
 
 	listenPacket ListenPacketFunc
+	logger       logger.Logger
 }
 
 type udpPacket struct {
@@ -49,7 +51,10 @@ type udpPacket struct {
 	Err  error
 }
 
-func NewUDPHopPacketConn(addrStr string, hopPorts string, hopInterval time.Duration, listenPacket ListenPacketFunc) (net.PacketConn, error) {
+func NewUDPHopPacketConn(addrStr string, hopPorts string,
+	hopInterval time.Duration,
+	listenPacket ListenPacketFunc,
+	logger logger.Logger) (net.PacketConn, error) {
 	addr, err := ResolveUDPHopAddr(addrStr, hopPorts)
 	if err != nil {
 		return nil, E.Cause(err, "ResolveUDPHopAddr")
@@ -82,6 +87,7 @@ func NewUDPHopPacketConn(addrStr string, hopPorts string, hopInterval time.Durat
 			},
 		},
 		listenPacket: listenPacket,
+		logger:       logger,
 	}
 	go hConn.recvLoop(curConn)
 	go hConn.hopLoop()
@@ -134,6 +140,7 @@ func (u *udpHopPacketConn) hop() {
 	}
 	newConn, err := u.listenPacket()
 	if err != nil {
+		u.logger.Trace(E.Cause(err, "listen new packet"))
 		// Could be temporary, just skip this hop
 		return
 	}
