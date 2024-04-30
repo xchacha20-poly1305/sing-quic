@@ -2,7 +2,6 @@ package hysteria
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"math"
 	"net"
@@ -12,7 +11,7 @@ import (
 	"time"
 
 	"github.com/sagernet/quic-go"
-	qtls "github.com/sagernet/sing-quic"
+	"github.com/sagernet/sing-quic"
 	hyCC "github.com/sagernet/sing-quic/hysteria/congestion"
 	hop "github.com/sagernet/sing-quic/udphop"
 	"github.com/sagernet/sing/common/baderror"
@@ -152,7 +151,7 @@ func (c *Client) offerNew(ctx context.Context) (*clientQUICConnection, error) {
 			return c.dialer.ListenPacket(c.ctx, c.serverAddr)
 		})
 		if err != nil {
-			return nil, fmt.Errorf("hop.NewUDPHopPacketConn: %w", err)
+			return nil, E.Cause(err, "create hop PacketConn")
 		}
 	} else {
 		packetConn = bufio.NewUnbindPacketConn(udpConn)
