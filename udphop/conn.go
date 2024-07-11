@@ -51,18 +51,18 @@ type udpPacket struct {
 	Err  error
 }
 
-func NewUDPHopPacketConn(addrStr string, hopPorts string,
+func NewUDPHopPacketConn(addr *UDPHopAddr,
 	hopInterval time.Duration,
 	preConn net.PacketConn,
 	listenPacket ListenPacketFunc,
-	logger logger.Logger) (net.PacketConn, error) {
-	addr, err := ResolveUDPHopAddr(addrStr, hopPorts)
-	if err != nil {
-		return nil, E.Cause(err, "ResolveUDPHopAddr")
+	logger logger.Logger,
+) (net.PacketConn, error) {
+	if addr == nil {
+		return nil, E.New("addr cannot be nil")
 	}
 	if hopInterval == 0 {
 		hopInterval = defaultHopInterval
-	} else if hopInterval < 5*time.Second {
+	} else if hopInterval < MinimumHopInterval*time.Second {
 		return nil, E.New("hop interval must be at least 5 seconds")
 	}
 	addrs, err := addr.addrs()

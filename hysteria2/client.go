@@ -20,7 +20,7 @@ import (
 	"github.com/sagernet/sing-quic/hysteria"
 	hyCC "github.com/sagernet/sing-quic/hysteria/congestion"
 	"github.com/sagernet/sing-quic/hysteria2/internal/protocol"
-	hop "github.com/sagernet/sing-quic/udphop"
+	"github.com/sagernet/sing-quic/udphop"
 	"github.com/sagernet/sing/common/baderror"
 	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -43,8 +43,7 @@ type ClientOptions struct {
 	Password           string
 	TLSConfig          aTLS.Config
 	UDPDisabled        bool
-	HopPorts           string
-	HopInterval        int
+	udphop.UDPHopOption
 }
 
 type Client struct {
@@ -60,7 +59,7 @@ type Client struct {
 	tlsConfig          aTLS.Config
 	quicConfig         *quic.Config
 	udpDisabled        bool
-	hopPorts           string
+	hopAddr            *udphop.UDPHopAddr
 	hopInterval        time.Duration
 
 	connAccess sync.RWMutex
@@ -81,6 +80,17 @@ func NewClient(options ClientOptions) (*Client, error) {
 	if len(options.TLSConfig.NextProtos()) == 0 {
 		options.TLSConfig.SetNextProtos([]string{http3.NextProtoH3})
 	}
+	var hopAddr *udphop.UDPHopAddr
+	if options.HopPorts != "" {
+		if options.HopInterval < udphop.MinimumHopInterval {
+			options.HopInterval = udphop.MinimumHopInterval
+		}
+		var err error
+		hopAddr, err = udphop.ResolveUDPHopAddr(options.ServerAddress.AddrString(), options.HopPorts)
+		if err != nil {
+			return nil, E.Cause(err, "parse hop ports")
+		}
+	}
 	return &Client{
 		ctx:                options.Context,
 		dialer:             options.Dialer,
@@ -94,7 +104,7 @@ func NewClient(options ClientOptions) (*Client, error) {
 		tlsConfig:          options.TLSConfig,
 		quicConfig:         quicConfig,
 		udpDisabled:        options.UDPDisabled,
-		hopPorts:           options.HopPorts,
+		hopAddr:            hopAddr,
 		hopInterval:        time.Duration(options.HopInterval) * time.Second,
 	}, nil
 }
@@ -124,10 +134,9 @@ func (c *Client) offerNew(ctx context.Context) (*clientQUICConnection, error) {
 	}
 	var packetConn net.PacketConn
 	packetConn = bufio.NewUnbindPacketConn(udpConn)
-	if c.hopPorts != "" {
-		packetConn, err = hop.NewUDPHopPacketConn(
-			c.serverAddr.AddrString(),
-			c.hopPorts,
+	if c.hopAddr != nil {
+		packetConn, err = udphop.NewUDPHopPacketConn(
+			c.hopAddr,
 			c.hopInterval,
 			packetConn,
 			func() (net.PacketConn, error) {
@@ -136,11 +145,12 @@ func (c *Client) offerNew(ctx context.Context) (*clientQUICConnection, error) {
 			c.logger,
 		)
 		if err != nil {
-			return nil, E.Cause(err, "create hop PacketConn")
+			_ = udpConn.Close()
+			return nil, E.Cause(err, "create udphop packet conn")
 		}
 	}
 	if c.salamanderPassword != "" {
-		packetConn = NewSalamanderConn(packetConn, []byte(c.salamanderPassword), c.hopPorts != "")
+		packetConn = NewSalamanderConn(packetConn, []byte(c.salamanderPassword), c.hopAddr != nil)
 	}
 	var quicConn quic.EarlyConnection
 	http3Transport, err := qtls.CreateTransport(packetConn, &quicConn, c.serverAddr, c.tlsConfig, c.quicConfig)
