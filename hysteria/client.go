@@ -40,6 +40,8 @@ type ClientOptions struct {
 	TLSConfig     aTLS.Config
 	UDPDisabled   bool
 
+	HopStrategy HopStrategy
+
 	// Legacy options
 
 	ConnReceiveWindow   uint64
@@ -65,6 +67,8 @@ type Client struct {
 
 	connAccess sync.Mutex
 	conn       *clientQUICConnection
+
+	serverHop bool
 }
 
 func NewClient(options ClientOptions) (*Client, error) {
@@ -102,14 +106,25 @@ func NewClient(options ClientOptions) (*Client, error) {
 	} else if options.ReceiveBPS < MinSpeedBPS {
 		return nil, E.New("invalid download speed")
 	}
-	var serverPorts []uint16
+	var (
+		serverPorts []uint16
+		err         error
+		serverHop   bool
+	)
 	if len(options.ServerPorts) > 0 {
-		var err error
 		serverPorts, err = ParsePorts(options.ServerPorts)
 		if err != nil {
 			return nil, err
 		}
+		switch options.HopStrategy {
+		case HopBoth:
+		case HopServer:
+			serverHop = true
+		default:
+			return nil, E.New("unknown hop strategy: ", options.HopStrategy)
+		}
 	}
+
 	return &Client{
 		ctx:           options.Context,
 		dialer:        options.Dialer,
@@ -125,6 +140,8 @@ func NewClient(options ClientOptions) (*Client, error) {
 		tlsConfig:     options.TLSConfig,
 		quicConfig:    quicConfig,
 		udpDisabled:   options.UDPDisabled,
+
+		serverHop: serverHop,
 	}, nil
 }
 
@@ -191,7 +208,7 @@ func (c *Client) offerNew(ctx context.Context) (*clientQUICConnection, error) {
 		packetConn net.PacketConn
 		err        error
 	)
-	if len(c.serverPorts) == 0 {
+	if len(c.serverPorts) == 0 || c.serverHop {
 		packetConn, err = dialFunc(c.serverAddr)
 	} else {
 		packetConn, err = NewHopPacketConn(dialFunc, c.serverAddr, c.serverPorts, c.hopInterval)
@@ -239,6 +256,15 @@ func (c *Client) offerNew(ctx context.Context) (*clientQUICConnection, error) {
 		go c.loopMessages(conn)
 	}
 	c.conn = conn
+	if c.serverHop && len(c.serverPorts) > 0 {
+		go LoopUpdateServerPort(
+			ctx.Done(), conn.connDone, conn.connDone,
+			c.hopInterval,
+			c.logger,
+			c.serverAddr, c.serverPorts,
+			quicConn,
+		)
+	}
 	return conn, nil
 }
 

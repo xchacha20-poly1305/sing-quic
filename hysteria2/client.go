@@ -46,6 +46,8 @@ type ClientOptions struct {
 	Password           string
 	TLSConfig          aTLS.Config
 	UDPDisabled        bool
+
+	HopStrategy hysteria.HopStrategy
 }
 
 type Client struct {
@@ -66,6 +68,8 @@ type Client struct {
 
 	connAccess sync.Mutex
 	conn       *clientQUICConnection
+
+	serverHop bool
 }
 
 func NewClient(options ClientOptions) (*Client, error) {
@@ -82,14 +86,25 @@ func NewClient(options ClientOptions) (*Client, error) {
 	if len(options.TLSConfig.NextProtos()) == 0 {
 		options.TLSConfig.SetNextProtos([]string{http3.NextProtoH3})
 	}
-	var serverPorts []uint16
+	var (
+		serverPorts []uint16
+		err         error
+		serverHop   bool
+	)
 	if len(options.ServerPorts) > 0 {
-		var err error
 		serverPorts, err = hysteria.ParsePorts(options.ServerPorts)
 		if err != nil {
 			return nil, err
 		}
+		switch options.HopStrategy {
+		case hysteria.HopBoth:
+		case hysteria.HopServer:
+			serverHop = true
+		default:
+			return nil, E.New("unknown hop strategy: ", options.HopStrategy)
+		}
 	}
+
 	return &Client{
 		ctx:                options.Context,
 		dialer:             options.Dialer,
@@ -105,6 +120,8 @@ func NewClient(options ClientOptions) (*Client, error) {
 		tlsConfig:          options.TLSConfig,
 		quicConfig:         quicConfig,
 		udpDisabled:        options.UDPDisabled,
+
+		serverHop: serverHop,
 	}, nil
 }
 
@@ -139,7 +156,7 @@ func (c *Client) offerNew(ctx context.Context) (*clientQUICConnection, error) {
 		packetConn net.PacketConn
 		err        error
 	)
-	if len(c.serverPorts) == 0 {
+	if len(c.serverPorts) == 0 || c.serverHop {
 		packetConn, err = dialFunc(c.serverAddr)
 	} else {
 		packetConn, err = hysteria.NewHopPacketConn(dialFunc, c.serverAddr, c.serverPorts, c.hopInterval)
@@ -210,6 +227,15 @@ func (c *Client) offerNew(ctx context.Context) (*clientQUICConnection, error) {
 		go c.loopMessages(conn)
 	}
 	c.conn = conn
+	if c.serverHop && len(c.serverPorts) > 0 {
+		go hysteria.LoopUpdateServerPort(
+			ctx.Done(), conn.connDone, conn.connDone,
+			c.hopInterval,
+			c.logger,
+			c.serverAddr, c.serverPorts,
+			quicConn,
+		)
+	}
 	return conn, nil
 }
 
